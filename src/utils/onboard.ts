@@ -1,4 +1,6 @@
-import { Contract, ContractRunner, keccak256, Provider } from "ethers"
+import { Contract } from "ethers"
+import { keccak256 } from "ethers/lib/utils"
+import { providers } from "ethers"
 import { getDefaultProvider } from "./network"
 import { decryptRSA, generateRSAKeyPair, recoverUserKey, sign } from "@coti-io/coti-sdk-typescript"
 import { CotiNetwork, RsaKeyPair } from "../types"
@@ -6,7 +8,7 @@ import { ONBOARD_CONTRACT_ABI } from "./constants"
 import { Wallet } from "../wallet/Wallet"
 import { JsonRpcSigner } from "../providers/JsonRpcSigner"
 
-export function getAccountOnboardContract(contractAddress: string, runner?: ContractRunner) {
+export function getAccountOnboardContract(contractAddress: string, runner?: providers.Provider | Wallet | providers.JsonRpcSigner) {
     return new Contract(contractAddress, JSON.stringify(ONBOARD_CONTRACT_ABI), runner)
 }
 
@@ -51,7 +53,7 @@ export async function onboard(defaultOnboardContractAddress: string, signer: Wal
 export async function recoverAesFromTx(txHash: string,
                                        rsaKey: RsaKeyPair,
                                        defaultOnboardContractAddress: string,
-                                       provider: Provider | null) {
+                                       provider: providers.Provider | null) {
     try {
         const receipt = provider
             ? await provider.getTransactionReceipt(txHash)

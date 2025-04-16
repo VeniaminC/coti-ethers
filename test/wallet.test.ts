@@ -5,7 +5,7 @@ import dotenv from "dotenv"
 
 dotenv.config({ path: './test/.env' })
 
-describe("Wallet tests", function () {
+describe("Wallet tests", function(this: Mocha.Suite) {
     this.timeout(30000);
     const pk = process.env.PRIVATE_KEY || Wallet.createRandom().privateKey;
     let wallet: Wallet

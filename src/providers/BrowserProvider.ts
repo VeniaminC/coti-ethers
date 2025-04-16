@@ -1,82 +1,48 @@
-import {assertArgument, Eip1193Provider, JsonRpcApiProviderOptions, JsonRpcError, JsonRpcPayload, JsonRpcResult} from "ethers";
-import type {Networkish} from "ethers/lib.commonjs/providers/network";
-import {BrowserProviderOptions} from "ethers/lib.commonjs/providers/provider-browser";
-import {JsonRpcApiPollingProvider} from "./JsonRpcApiPollingProvider";
-import {JsonRpcSigner} from "./JsonRpcSigner"
-import {OnboardInfo} from "../types";
+import { providers } from "ethers";
+import { JsonRpcApiPollingProvider } from "./JsonRpcApiPollingProvider";
+import { JsonRpcSigner } from "./JsonRpcSigner";
+import { OnboardInfo } from "../types";
+
+// Define types from ethers v6 that we need
+interface Eip1193Provider {
+    request: (request: { method: string, params?: Array<any> | Record<string, any> }) => Promise<any>;
+}
 
 export class BrowserProvider extends JsonRpcApiPollingProvider {
     
-    #request: (method: string, params: Array<any> | Record<string, any>) => Promise<any>;
+    #provider: Eip1193Provider;
 
     /**
-     *  Connnect to the %%ethereum%% provider, optionally forcing the
+     *  Connect to the %%ethereum%% provider, optionally forcing the
      *  %%network%%.
      */
-    constructor(ethereum: Eip1193Provider, network?: Networkish, _options?: BrowserProviderOptions) {
+    constructor(ethereum: Eip1193Provider, url?: string | { url: string, pollingInterval?: number }, network?: providers.Networkish) {
         // Copy the options
-        const options: JsonRpcApiProviderOptions = Object.assign({ },
-          ((_options != null) ? _options: { }),
-          { batchMaxCount: 1 });
+        const providerOptions = { batchMaxCount: 1 };
 
-        assertArgument(ethereum && ethereum.request, "invalid EIP-1193 provider", "ethereum", ethereum);
+        if (!ethereum || !ethereum.request) {
+            throw new Error("invalid EIP-1193 provider");
+        }
 
-        super(network, options);
-
-        this.#request = async (method: string, params: Array<any> | Record<string, any>) => {
-            const payload = { method, params };
-            this.emit("debug", { action: "sendEip1193Request", payload });
-            try {
-                const result = await ethereum.request(payload);
-                this.emit("debug", { action: "receiveEip1193Result", result });
-                return result;
-            } catch (e: any) {
-                const error = new Error(e.message);
-                (<any>error).code = e.code;
-                (<any>error).data = e.data;
-                (<any>error).payload = payload;
-                this.emit("debug", { action: "receiveEip1193Error", error });
-                throw error;
-            }
-        };
+        super(url, network);
+        
+        this.#provider = ethereum;
     }
 
-    async send(method: string, params: Array<any> | Record<string, any>): Promise<any> {
-        await this._start();
-
-        return await super.send(method, params);
+    async send(method: string, params: Array<any>): Promise<any> {
+        return this._sendEip1193Request(method, params);
     }
 
-    async _send(payload: JsonRpcPayload | Array<JsonRpcPayload>): Promise<Array<JsonRpcResult | JsonRpcError>> {
-        assertArgument(!Array.isArray(payload), "EIP-1193 does not support batch request", "payload", payload);
-
+    async _sendEip1193Request(method: string, params: Array<any>): Promise<any> {
         try {
-            const result = await this.#request(payload.method, payload.params || [ ]);
-            return [ { id: payload.id, result } ];
+            const result = await this.#provider.request({ method, params: params || [] });
+            return result;
         } catch (e: any) {
-            return [ {
-                id: payload.id,
-                error: { code: e.code, data: e.data, message: e.message }
-            } ];
+            const error = new Error(e.message || "unknown error");
+            (error as any).code = e.code;
+            (error as any).data = e.data;
+            throw error;
         }
-    }
-
-    getRpcError(payload: JsonRpcPayload, error: JsonRpcError): Error {
-
-        error = JSON.parse(JSON.stringify(error));
-
-        // EIP-1193 gives us some machine-readable error codes, so rewrite
-        // them into 
-        switch (error.error.code || -1) {
-            case 4001:
-                error.error.message = `ethers-user-denied: ${ error.error.message }`;
-                break;
-            case 4200:
-                error.error.message = `ethers-unsupported: ${ error.error.message }`;
-                break;
-        }
-
-        return super.getRpcError(payload, error);
     }
 
     /**
@@ -85,30 +51,34 @@ export class BrowserProvider extends JsonRpcApiPollingProvider {
     async hasSigner(address: number | string): Promise<boolean> {
         if (address == null) { address = 0; }
 
-        const accounts = await this.send("eth_accounts", [ ]);
+        const accounts = await this.send("eth_accounts", []);
         if (typeof(address) === "number") {
             return (accounts.length > address);
         }
 
-        address = address.toLowerCase();
+        address = (address as string).toLowerCase();
         return accounts.filter((a: string) => (a.toLowerCase() === address)).length !== 0;
     }
 
-    async getSigner(address?: number | string, userOnboardInfo?: OnboardInfo): Promise<JsonRpcSigner> {
-        if (address == null) { address = 0; }
+    getSigner(addressOrIndex?: string | number): providers.JsonRpcSigner;
+    getSigner(addressOrIndex: string | number, userOnboardInfo?: OnboardInfo): JsonRpcSigner;
+    getSigner(addressOrIndex?: string | number, userOnboardInfo?: OnboardInfo): providers.JsonRpcSigner | JsonRpcSigner {
+        if (addressOrIndex == null) { addressOrIndex = 0; }
 
-        if (!(await this.hasSigner(address))) {
-            try {
-                //const resp = 
-                await this.#request("eth_requestAccounts", [ ]);
-                //console.log("RESP", resp);
-
-            } catch (error: any) {
-                const payload = error.payload;
-                throw this.getRpcError(payload, { id: payload.id, error });
-            }
+        // If we have userOnboardInfo, use our custom signer
+        if (userOnboardInfo) {
+            return new JsonRpcSigner(this, addressOrIndex, userOnboardInfo);
         }
 
-        return await super.getSigner(address, userOnboardInfo);
+        // Otherwise, use the parent's implementation
+        return super.getSigner(addressOrIndex);
+    }
+
+    async requestAccounts(): Promise<Array<string>> {
+        try {
+            return await this._sendEip1193Request("eth_requestAccounts", []);
+        } catch (error: any) {
+            throw new Error(`Error requesting accounts: ${error.message || "Unknown error"}`);
+        }
     }
 }

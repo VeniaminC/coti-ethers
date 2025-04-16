@@ -1,16 +1,17 @@
-import { Provider, toNumber, TransactionRequest } from "ethers";
+import { providers } from "ethers";
+import { BigNumber } from "ethers";
 
-export async function validateGasEstimation(provider: Provider, tx: TransactionRequest) {
+export async function validateGasEstimation(provider: providers.Provider, tx: providers.TransactionRequest) {
     const {valid, gasEstimation} = await isGasEstimationValid(provider, tx);
     if (!valid)
         throw new Error(`Not enough gas for tx. Provided: ${tx.gasLimit}, needed: ${gasEstimation}`);
 }
 
-export async function isGasEstimationValid(provider: Provider, tx: TransactionRequest) {
+export async function isGasEstimationValid(provider: providers.Provider, tx: providers.TransactionRequest) {
     const estimatedGas = await provider.estimateGas(tx)
-    const gasLimit = tx.gasLimit ? toNumber(tx.gasLimit) : 0;
+    const gasLimit = tx.gasLimit ? BigNumber.from(tx.gasLimit).toNumber() : 0;
 
-    if (!estimatedGas || estimatedGas > gasLimit) {
+    if (!estimatedGas || estimatedGas.gt(BigNumber.from(gasLimit))) {
         throw new Error(`Not enough gas for tx. Provided: ${gasLimit}, needed: ${estimatedGas.toString()}`);
     }
     return {valid: true, gasEstimation: estimatedGas}

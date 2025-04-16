@@ -1,4 +1,6 @@
-import {Provider, SigningKey, Wallet as BaseWallet} from "ethers";
+import { Wallet as BaseWallet } from "ethers";
+import { SigningKey } from "ethers/lib/utils";
+import { providers } from "ethers";
 import {CotiNetwork, OnboardInfo, RsaKeyPair} from "../types";
 import {
     buildInputText,
@@ -20,7 +22,7 @@ export class Wallet extends BaseWallet {
 
     constructor(
         privateKey: string | SigningKey,
-        provider?: Provider | null,
+        provider?: providers.Provider,
         userOnboardInfo?: OnboardInfo
     ) {
         super(privateKey, provider);
@@ -136,12 +138,10 @@ export class Wallet extends BaseWallet {
                 onboardContractAddress, this.provider))
         else {
             const accountBalance = await getAccountBalance(this.address, this.provider || getDefaultProvider(CotiNetwork.Testnet))
-            if (accountBalance > BigInt(0))
+            if (accountBalance.toString() !== "0")
                 this.setUserOnboardInfo(await onboard(onboardContractAddress, this))
             else
                 throw new Error("Account balance is 0 so user cannot be onboarded.")
         }
-
     }
-
 }

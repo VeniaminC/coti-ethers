@@ -1,18 +1,20 @@
-import { formatEther, getAddress, isAddress, Provider, TransactionRequest, Wallet } from "ethers";
+import { Wallet } from "ethers";
+import { formatEther, getAddress, isAddress } from "ethers/lib/utils";
+import { providers, BigNumber } from "ethers";
 import { isProviderConnected } from "./network";
 import { validateGasEstimation } from "./transaction";
 
-export async function printAccountDetails(provider: Provider, address: string) {
+export async function printAccountDetails(provider: providers.Provider, address: string) {
     if (!(await isProviderConnected(provider) && addressValid(address))) {
         throw Error("provider not connected or address is not valid address");
     }
     console.log("account address:", address);
     const balanceInWei = await getAccountBalance(address, provider)
-    console.log("account balance: ", balanceInWei, 'wei (', formatEther(balanceInWei.toString()), 'ether)');
+    console.log("account balance: ", balanceInWei, 'wei (', formatEther(balanceInWei), 'ether)');
     console.log("account nonce: ", await getNonce(provider, address))
 }
 
-export async function getAccountBalance(address: string, provider: Provider) {
+export async function getAccountBalance(address: string, provider: providers.Provider) {
     if (!(await isProviderConnected(provider) && addressValid(address))) {
         throw Error("provider not connected or address is not valid address");
     }
@@ -23,7 +25,7 @@ export function validateAddress(address: string): { valid: boolean; safe: string
     return {'valid': isAddress(address), 'safe': getAddress(address)}
 }
 
-export async function getNonce(provider: Provider, address: string) {
+export async function getNonce(provider: providers.Provider, address: string) {
     if (!(await isProviderConnected(provider) && addressValid(address))) {
         throw Error("provider not connected or address is not valid address");
     }
@@ -34,7 +36,7 @@ export function addressValid(address: string): boolean {
     return validateAddress(address).valid
 }
 
-export async function getNativeBalance(provider: Provider, address: string) {
+export async function getNativeBalance(provider: providers.Provider, address: string) {
     if (!(await isProviderConnected(provider) && addressValid(address))) {
         throw Error("provider not connected or address is not valid address");
     }
@@ -48,15 +50,14 @@ export async function getEoa(accountPrivateKey: string) {
     return wallet.address;
 }
 
-export async function transferNative(provider: Provider, wallet: Wallet, recipientAddress: string, amountToTransferInWei: BigInt, nativeGasUnit: number) {
-    const feeData = await provider.getFeeData();
-    const gasPrice = feeData.gasPrice;
+export async function transferNative(provider: providers.Provider, wallet: Wallet, recipientAddress: string, amountToTransferInWei: BigInt, nativeGasUnit: number) {
+    const gasPrice = await provider.getGasPrice();
 
-    const tx: TransactionRequest = {
+    const tx: providers.TransactionRequest = {
         to: recipientAddress,
         from: wallet.address,
         value: amountToTransferInWei.toString(),
-        nonce: await wallet.getNonce(),
+        nonce: await provider.getTransactionCount(wallet.address),
         gasLimit: nativeGasUnit,
         gasPrice: gasPrice
     };

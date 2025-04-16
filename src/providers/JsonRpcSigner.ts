@@ -1,17 +1,21 @@
 import {ctString, ctUint, decodeUint, decryptString, decryptUint, encodeKey, encodeUint, encrypt, itString, itUint} from "@coti-io/coti-sdk-typescript";
-import {JsonRpcSigner as BaseJsonRpcSigner, JsonRpcApiProvider, solidityPacked} from "ethers"
+import { providers } from "ethers"
+import { solidityKeccak256, solidityPack } from "ethers/lib/utils"
 import {CotiNetwork, OnboardInfo, RsaKeyPair} from "../types";
 import {ONBOARD_CONTRACT_ADDRESS} from "../utils/constants";
 import {getAccountBalance, getDefaultProvider, onboard, recoverAesFromTx} from "../utils";
 
 const EIGHT_BYTES = 8
+// This private variable mirrors the one in ethers JsonRpcSigner implementation
+const _constructorGuard = {};
 
-export class JsonRpcSigner extends BaseJsonRpcSigner {
+export class JsonRpcSigner extends providers.JsonRpcSigner {
     private _autoOnboard: boolean = true;
     private _userOnboardInfo?: OnboardInfo;
 
-    constructor(provider: JsonRpcApiProvider, address: string, userOnboardInfo?: OnboardInfo) {
-        super(provider, address)
+    constructor(provider: providers.JsonRpcProvider, addressOrIndex?: string | number, userOnboardInfo?: OnboardInfo) {
+        // Pass the constructor guard as first argument to match ethers v5 implementation
+        super(_constructorGuard as any, provider, addressOrIndex);
         this._userOnboardInfo = userOnboardInfo;
     }
 
@@ -41,9 +45,9 @@ export class JsonRpcSigner extends BaseJsonRpcSigner {
         
         let signature: Uint8Array | string
         
-        const message = solidityPacked(
+        const message = solidityKeccak256(
             ["address", "address", "bytes4", "uint256"],
-            [this.address, contractAddress, functionSelector, ctInt]
+            [this._address, contractAddress, functionSelector, ctInt.toString()]
         )
 
         const messageBytes = new Uint8Array((message.length - 2) / 2)
@@ -212,8 +216,8 @@ export class JsonRpcSigner extends BaseJsonRpcSigner {
             this.setAesKey(await recoverAesFromTx(this._userOnboardInfo.txHash, this._userOnboardInfo.rsaKey,
                 onboardContractAddress, this.provider))
         else {
-            const accountBalance = await getAccountBalance(this.address, this.provider || getDefaultProvider(CotiNetwork.Testnet))
-            if (accountBalance > BigInt(0))
+            const accountBalance = await getAccountBalance(this._address, this.provider || getDefaultProvider(CotiNetwork.Testnet))
+            if (accountBalance.toString() !== "0")
                 this.setUserOnboardInfo(await onboard(onboardContractAddress, this))
             else
                 throw new Error("Account balance is 0 so user cannot be onboarded.")
